@@ -1,214 +1,403 @@
-"""
-main.py - Comprehensive demonstration of the Clinic Appointment System.
+from abc import ABC, abstractmethod
+from enum import Enum
+from functools import wraps
 
-Fulfills all requirements from Part 1 to Part 8:
-- Part 1: Domain models (Person, Patient, Doctor, Nurse, Pharmacist, Appointment, Clinic)
-- Part 2: Encapsulation, status lifecycle transitions, cancellation rules, constructor validation
-- Part 3: Polymorphic fee calculation without any isinstance/type tags
-- Part 4: Context manager logging guaranteeing [log] opened and [log] closed, capturing failures
-- Part 5: Multiple inheritance (MedicalLecturer), Person constructor executed ONCE, fee return value
-- Part 6 & Twist 0: Conflict checks, unique IDs, and FIFO waiting list auto-allocation
-- Part 8: Step-by-step demonstration including deliberate failure cases
-"""
-
-from clock import Clock
-from models import (
-    Person, Patient, Staff, Doctor, Nurse, Pharmacist,
-    Lecturer, MedicalLecturer, Appointment,
-    STUDENT_ID, DOCTOR_BASE_FEE, NURSE_BASE_FEE, PHARMACIST_FEE
-)
-from clinic import Clinic
+P = 2420420
 
 
-def print_section(title: str):
-    print("\n" + "=" * 70)
-    print(f"  {title}")
-    print("=" * 70)
+class Person(ABC):
+    constructor_calls = 0
+    def __init__(self, name: str, person_id: int) -> None:
+        clean_name = name.strip()
+
+        if not clean_name:
+            raise ValueError("Name cannot be empty.")
+
+        if isinstance(person_id, bool) or not isinstance(person_id, int) or person_id <= 0:
+            raise ValueError("ID must be a positive number.")
+
+        self._name = clean_name
+        self._id = person_id
+        Person.constructor_calls += 1
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def person_id(self) -> int:
+        return self._id
+
+    @abstractmethod
+    def role(self) -> str:
+        raise NotImplementedError
 
 
-def demo_part_1_and_2():
-    print_section("PART 1 & 2: CONSTRUCTOR VALIDATION, ENCAPSULATION & INVARIANTS")
-
-    print("[*] Student Number:", STUDENT_ID)
-    print("[*] Calculated Fees:")
-    print(f"    - Doctor:     40 + 5 * ({STUDENT_ID} % 5) = ${DOCTOR_BASE_FEE}")
-    print(f"    - Nurse:      10 + ({STUDENT_ID} % 3)     = ${NURSE_BASE_FEE}")
-    print(f"    - Pharmacist: ${PHARMACIST_FEE}")
-    print(f"    - Twist:      {STUDENT_ID} % 4 = {STUDENT_ID % 4} (Twist 0: Waiting list)")
-
-    print("\n--- 1. Constructor Validation (Rejecting empty names & non-positive IDs) ---")
-    # Valid patient
-    p = Patient(patient_id=101, name="Alice Walker")
-    print(f"  [SUCCESS] Created: {p}")
-
-    # Reject non-positive ID
-    try:
-        Patient(patient_id=0, name="Invalid ID")
-    except ValueError as e:
-        print(f"  [REJECTED] Non-positive ID: {e}")
-
-    # Reject negative ID
-    try:
-        Patient(patient_id=-5, name="Invalid Negative ID")
-    except ValueError as e:
-        print(f"  [REJECTED] Negative ID: {e}")
-
-    # Reject empty name
-    try:
-        Patient(patient_id=102, name="   ")
-    except ValueError as e:
-        print(f"  [REJECTED] Empty/whitespace name: {e}")
-
-    print("\n--- 2. Encapsulation: Preventing external mutation of internal lists ---")
-    clock = Clock(start_hour=10)
-    clinic = Clinic(name="City Central Health", clock=clock)
-    clinic.register_person(p)
-
-    patients_copy = clinic.get_patients()
-    print(f"  Internal patients before external modification: {[pt.name for pt in clinic.get_patients()]}")
-    # Modifying the returned copy:
-    patients_copy.clear()
-    print(f"  Modified external list: {patients_copy}")
-    print(f"  Internal patients after external clear():      {[pt.name for pt in clinic.get_patients()]}")
-    print("  -> Proved: Clinic internal state is completely protected by returning shallow copies.")
+class Patient(Person):
+    def role(self) -> str:
+        return "Patient"
 
 
-def demo_part_3():
-    print_section("PART 3: POLYMORPHISM (NO isinstance / type tags)")
-    print("Iterating over a polymorphic list of Staff members:")
-
-    staff_members = [
-        Doctor(staff_id=1, name="Dr. Gregory House"),
-        Nurse(staff_id=2, name="Nurse Jackie Peyton"),
-        Pharmacist(staff_id=3, name="Pharmacist John Pemberton"),
-    ]
-
-    # In one loop, print each person's role and fee with NO isinstance/type tags:
-    for s in staff_members:
-        print(f"  - Staff: {s.name:<25} | Role: {s.role():<12} | Fee: ${s.fee()}")
-
-    print("\n-> Notice: We added Pharmacist cleanly without checking any types or modifying Clinic!")
+class Staff(Person):
+    @abstractmethod
+    def fee(self) -> int:
+        raise NotImplementedError
 
 
-def demo_part_4():
-    print_section("PART 4: LOGGING GUARANTEE & DELIBERATE FAILURE (too late)")
-    clock = Clock(start_hour=20)
-    clinic = Clinic(name="Metro Clinic", clock=clock)
+class Doctor(Staff):
+    def role(self) -> str:
+        return "Doctor"
 
-    patient = Patient(patient_id=201, name="John Doe")
-    doc = Doctor(staff_id=11, name="Dr. Sarah Smith")
-    clinic.register_person(patient)
-    clinic.register_person(doc)
+    def fee(self) -> int:
+        return 40 + 5 * (P % 5)
+class Nurse(Staff):
+    def role(self) -> str:
+        return "Nurse"
+    def fee(self) -> int:
+        return 10 + (P % 3)
+class Pharmacist(Staff):
+    def role(self) -> str:
+        return "Pharmacist"
+    def fee(self) -> int:
+        return 5
+class Lecturer(Person):
+    def __init__(self, name: str, person_id: int, module_name: str) -> None:
+        clean_module = module_name.strip()
+        if not clean_module:
+            raise ValueError("Module name cannot be empty.")
 
-    print("\n--- A. Booking and Confirming Appointment #3 at hour 21 ---")
-    clinic.book_appointment(appt_id=3, patient=patient, staff=doc, start_hour=21)
-    clinic.confirm_appointment(appt_id=3)
+        self._module_name = clean_module
+        super().__init__(name, person_id)
 
-    print("\n--- B. DELIBERATE FAILURE: Cancelling confirmed appointment < 2 hours before start ---")
-    print(f"Current Clock Time: hour {clock.now()} | Appointment Start: hour 21 (only 1 hour remaining!)")
-    print("Attempting to cancel appointment #3:")
-    success = clinic.cancel_appointment(appt_id=3)
-    print(f"Cancellation returned: {success}")
-    print("-> Notice above: [log] opened and [log] closed were both printed, and 'FAILED cancel #3: too late' was logged!")
+    @property
+    def module_name(self) -> str:
+        return self._module_name
 
-    print("\n--- C. Advancing clock past start hour and attempting to cancel ---")
-    clock.advance(2)  # Clock is now at hour 22
-    print(f"Clock advanced to hour {clock.now()}. Now attempting to cancel appointment #3:")
-    clinic.cancel_appointment(appt_id=3)
-
-
-def demo_part_5():
-    print_section("PART 5: DIAMOND PROBLEM & MedicalLecturer")
-
-    # Reset constructor counter to demonstrate single execution
-    Person.constructor_count = 0
-
-    print("Creating an instance of MedicalLecturer:")
-    med_lec = MedicalLecturer(person_id=99, name="Dr. Strange", module_name="Clinical Neuroanatomy")
-
-    print(f"  Instance:       {med_lec}")
-    print(f"  Role:           '{med_lec.role()}'")
-    print(f"  Module Name:    '{med_lec.module_name}'")
-    print(f"  Fee:            ${med_lec.fee()}")
-    print(f"  Person.__init__ call count: {Person.constructor_count}")
-    print(f"  Method Resolution Order (MRO): {[c.__name__ for c in MedicalLecturer.__mro__]}")
-
-    print("\n-> Analysis:")
-    print("  1. Person constructor ran exactly ONCE due to Python's C3 MRO and cooperative super() calls.")
-    print("  2. MedicalLecturer.fee() returns $40 (Doctor's fee) because within the clinic, appointments")
-    print("     are medical consultations; academic teaching duties are not charged to clinical patients.")
+    def role(self) -> str:
+        return "Lecturer"
 
 
-def demo_part_6_and_twist_0():
-    print_section("PART 6 & TWIST 0: RULES, CONFLICTS & WAITING LIST AUTO-OFFER")
+class MedicalLecturer(Doctor, Lecturer):
+    def __init__(self, name: str, person_id: int, module_name: str) -> None:
+        super().__init__(name, person_id, module_name)
 
-    clock = Clock(start_hour=50)
-    clinic = Clinic(name="Apex Health", clock=clock)
+    def role(self) -> str:
+        return "Doctor and Lecturer"
 
-    # Register staff and patients
-    dr_alice = Doctor(staff_id=1, name="Dr. Alice")
-    pt_bob = Patient(patient_id=10, name="Bob")
-    pt_carol = Patient(patient_id=11, name="Carol")
-    pt_david = Patient(patient_id=12, name="David")
+             
+        
+class AppointmentStatus(Enum):
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    CANCELLED = "CANCELLED"
+class Clock(ABC):
+    @abstractmethod
+    def now(self) -> int:
+        raise NotImplementedError
 
-    clinic.register_person(dr_alice)
-    clinic.register_person(pt_bob)
-    clinic.register_person(pt_carol)
-    clinic.register_person(pt_david)
+class ManualClock(Clock):
+    def __init__(self, current_hour: int) -> None:
+        self._current_hour = current_hour
+    def now(self) -> int:
+        return self._current_hour
 
-    print("\n--- 1. Unique IDs Enforcement across Clinic ---")
-    try:
-        # Attempt duplicate ID
-        duplicate_person = Patient(patient_id=1, name="Duplicate ID Patient")
-        clinic.register_person(duplicate_person)
-    except ValueError as e:
-        print(f"  [CAUGHT] Duplicate ID rejected: {e}")
-
-    print("\n--- 2. Booking Initial Appointment #101 for Bob at hour 55 ---")
-    clinic.book_appointment(appt_id=101, patient=pt_bob, staff=dr_alice, start_hour=55)
-
-    print("\n--- 3. Rule Enforcement: No Two Non-Cancelled Appointments at Same Hour ---")
-    print("Attempting to double-book Dr. Alice at hour 55 with Carol:")
-    clinic.book_appointment(appt_id=102, patient=pt_carol, staff=dr_alice, start_hour=55)
-
-    print("\nAttempting to double-book Bob at hour 55 with another doctor:")
-    dr_zack = Doctor(staff_id=2, name="Dr. Zack")
-    clinic.register_person(dr_zack)
-    clinic.book_appointment(appt_id=103, patient=pt_bob, staff=dr_zack, start_hour=55)
-
-    print("\n--- 4. Twist 0: Patients Join Waiting List for Dr. Alice ---")
-    clinic.join_waiting_list(patient=pt_carol, staff=dr_alice)
-    clinic.join_waiting_list(patient=pt_david, staff=dr_alice)
-    print(f"Current waiting list for {dr_alice.name}: {[p.name for p in clinic.get_waiting_list(dr_alice)]}")
-
-    print("\n--- 5. Twist 0: Bob's Appointment #101 is Cancelled > 2 hours in advance ---")
-    print(f"Current hour: {clock.now()}, Start hour: 55 (5 hours in advance). Cancelling #101:")
-    clinic.cancel_appointment(appt_id=101)
-
-    print("\n--- 6. Verification of Twist 0 Auto-Offer ---")
-    print(f"Remaining waiting list for {dr_alice.name}: {[p.name for p in clinic.get_waiting_list(dr_alice)]}")
-    all_appts = clinic.get_appointments()
-    print("Active clinic appointments:")
-    for a in all_appts:
-        print(f"  {a}")
-    print("-> Proved: Slot at hour 55 was automatically offered to first waiting patient Carol as PENDING!")
+# Appointment rules:
+# - Its ID is a positive whole number.
+# - Its patient and staff member are provided when it is created.
+# - Its start hour is from 0 to 167.
+# - Every appointment lasts exactly one hour.
+# - It begins as PENDING.   
 
 
-def main():
-    print("=" * 70)
-    print("       CLINICAL APPOINTMENT SYSTEM - DEMO & SPECIFICATION AUDIT")
-    print("=" * 70)
+class Appointment:
+    def __init__(
+          self,
+          appointment_id: int,
+          patient: Patient,
+          staff: Staff,
+          start_hour: int,
+          clock: Clock, 
+    ) -> None:
+        if appointment_id <= 0:
+            raise ValueError("Appointment ID must be positive.")
+        if isinstance(start_hour, bool) or not isinstance(start_hour, int):
+            raise ValueError("Start hour must be a whole number.")
+        if start_hour < 0 or start_hour >= 168:
+            raise ValueError("Start hour must be from 0 to 167.")
 
-    demo_part_1_and_2()
-    demo_part_3()
-    demo_part_4()
-    demo_part_5()
-    demo_part_6_and_twist_0()
+        self._appointment_id = appointment_id
+        self._patient = patient
+        self._staff = staff
+        self._start_hour = start_hour
+        self._clock = clock
+        self._status = AppointmentStatus.PENDING
+    @property
+    def appointment_id(self) -> int:
+        return self._appointment_id
+    @property
+    def patient(self) -> Patient:
+        return self._patient
+    @property
+    def staff(self) -> Staff:
+        return self._staff
 
-    print("\n" + "=" * 70)
-    print("       DEMONSTRATION COMPLETED SUCCESSFULLY")
-    print("=" * 70)
+    @property
+    def start_hour(self) -> int:
+        return self._start_hour
+
+    @property
+    def status(self) -> AppointmentStatus:
+        return self._status
+
+    def confirm(self) -> None:
+        if self._status != AppointmentStatus.PENDING:
+            raise ValueError("Only a pending appointment can be confirmed.")
+
+        self._status = AppointmentStatus.CONFIRMED
+
+    def cancel(self) -> None:
+        if self._status == AppointmentStatus.CANCELLED:
+            raise ValueError("A cancelled appointment cannot be changed.")
+
+        current_hour = self._clock.now()
+
+        if current_hour >= self._start_hour:
+            raise ValueError("Appointment has already started.")
+
+        if (
+            self._status == AppointmentStatus.CONFIRMED
+            and self._start_hour - current_hour < 2
+        ):
+            raise ValueError("Too late to cancel a confirmed appointment.")
+
+        self._status = AppointmentStatus.CANCELLED
+class AppointmentLog:
+    def __init__(self, filename: str) -> None:
+        self._filename = filename
+        self._file = None
+
+    def __enter__(self):
+        self._file = open(self._filename, "a", encoding="utf-8")
+        print("[log] opened")
+        return self
+
+    def write(self, message: str) -> None:
+        if self._file is None:
+            raise RuntimeError("The log is not open.")
+
+        self._file.write(message + "\n")
+        self._file.flush()
+
+    def __exit__(self, error_type, error, traceback):
+        file_to_close = self._file
+        self._file = None
+
+        if file_to_close is not None:
+            try:
+                file_to_close.close()
+            finally:
+                print("[log] closed")
+
+        return False
+
+
+def logged_action(action_name: str):
+    def decorator(method):
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            label = action_name
+
+            if action_name in ("book", "confirm","cancel") and args:
+                label = f"{action_name} #{args[0]}"
+
+            try:
+                result = method(self, *args, **kwargs)
+            except Exception as error:
+                self._log.write(f"FAILED {label}: {error}")
+                raise
+
+            self._log.write(f"{label}: SUCCESS")
+            return result
+
+        return wrapper
+
+    return decorator
+# Clinic rules:
+# - It owns the registered patients, staff, and appointments.
+# - Code outside the Clinic must not be able to change its internal lists.
+class Clinic:
+    def __init__(self, clock: Clock, log: AppointmentLog) -> None:
+        self._clock = clock
+        self._log = log
+        self._patients: list[Patient] = []
+        self._staff: list[Staff] = []
+        self._used_ids: set[int] = set()
+        self._appointments: list[Appointment] = []
+        self._waiting_lists: dict[int, list[Patient]] = {}
+
+    @property
+    def patients(self) -> tuple[Patient, ...]:
+        return tuple(self._patients)
+
+    @property
+    def staff(self) -> tuple[Staff, ...]:
+        return tuple(self._staff)
+
+    @property
+    def appointments(self) -> tuple[Appointment, ...]:
+        return tuple(self._appointments)
+
+    def _ensure_id_available(self, object_id: int) -> None:
+        if object_id in self._used_ids:
+            raise ValueError("This ID is already in use.")
+    @logged_action("register patient")
+    def register_patient(self, patient: Patient) -> None:
+        self._ensure_id_available(patient.person_id)
+        self._patients.append(patient)
+        self._used_ids.add(patient.person_id)
+
+    def register_staff(self, staff_member: Staff) -> None:
+        self._ensure_id_available(staff_member.person_id)
+        self._staff.append(staff_member)
+        self._used_ids.add(staff_member.person_id)
+    def join_waiting_list(self, patient: Patient, staff_member: Staff) -> None:
+        if patient not in self._patients:
+            raise ValueError("Patient is not registered.")
+
+        if staff_member not in self._staff:
+            raise ValueError("Staff member is not registered.")
+
+        waiting_patient_ids = [
+            waiting_patient.person_id
+            for waiting_patient in self._waiting_lists.get(staff_member.person_id, [])
+        ]
+
+        if patient.person_id in waiting_patient_ids:
+            raise ValueError("Patient is already on this waiting list.")
+
+        self._waiting_lists.setdefault(staff_member.person_id, []).append(patient)
+
+    @logged_action("book")
+    def book_appointment(
+        self,
+        appointment_id: int,
+        patient: Patient,
+        staff_member: Staff,
+        start_hour: int,
+    ) -> Appointment:
+        if patient not in self._patients:
+            raise ValueError("Patient is not registered.")
+
+        if staff_member not in self._staff:
+            raise ValueError("Staff member is not registered.")
+
+        self._ensure_id_available(appointment_id)
+
+        for existing in self._appointments:
+            if (
+                existing.start_hour == start_hour
+                and existing.status != AppointmentStatus.CANCELLED
+                and (
+                    existing.patient.person_id == patient.person_id
+                    or existing.staff.person_id == staff_member.person_id
+                )
+            ):
+                raise ValueError("Patient or staff member already has an appointment then.")
+
+        appointment = Appointment(
+            appointment_id,
+            patient,
+            staff_member,
+            start_hour,
+            self._clock,
+        )
+        self._appointments.append(appointment)
+        self._used_ids.add(appointment_id)
+        return appointment
+
+    def _next_available_id(self) -> int:
+        candidate = 1
+        while candidate in self._used_ids:
+            candidate = candidate + 1
+        return candidate
+
+    def _offer_slot_to_waiting_patient(self, cancelled_appointment: Appointment) -> None:
+        staff_id = cancelled_appointment.staff.person_id
+        waiting_list = self._waiting_lists.get(staff_id, [])
+
+        for waiting_patient in waiting_list.copy():
+            try:
+                self.book_appointment(
+                    self._next_available_id(),
+                    waiting_patient,
+                    cancelled_appointment.staff,
+                    cancelled_appointment.start_hour,
+                )
+            except ValueError:
+                continue
+            waiting_list.remove(waiting_patient)
+            return
+
+    @logged_action("cancel")
+    def cancel_appointment(self, appointment_id: int) -> Appointment:
+        for appointment in self._appointments:
+            if appointment.appointment_id == appointment_id:
+                appointment.cancel()
+                self._offer_slot_to_waiting_patient(appointment)
+                return appointment
+
+        raise ValueError("Appointment was not found.")
+
+    @logged_action("confirm")
+    def confirm_appointment(self, appointment_id: int) -> Appointment:
+        for appointment in self._appointments:
+            if appointment.appointment_id == appointment_id:
+                appointment.confirm()
+                return appointment
+
+        raise ValueError("Appointment was not found.")
 
 
 if __name__ == "__main__":
-    main()
+    with AppointmentLog("appointments.log") as log:
+        clock = ManualClock(10)
+        clinic = Clinic(clock, log)
+
+        first_patient = Patient("Ava", 1)
+        waiting_patient = Patient("Ben", 2)
+        doctor = Doctor("Dr. Ncube", 3)
+        nurse = Nurse("Nurse Moyo", 6)
+        pharmacist = Pharmacist("Pharmacist Dube", 7)
+
+        # Show that Person's constructor runs once for this object.
+        before = Person.constructor_calls
+        medical_lecturer = MedicalLecturer("Dr. Tariro", 50, "Public Health")
+        after = Person.constructor_calls
+        print("Person constructor calls:", after - before)
+
+        # Register everyone with the clinic.
+        clinic.register_patient(first_patient)
+        clinic.register_patient(waiting_patient)
+        clinic.register_staff(doctor)
+        clinic.register_staff(nurse)
+        clinic.register_staff(pharmacist)
+        clinic.register_staff(medical_lecturer)
+
+        # One loop works for every kind of staff member.
+        for staff_member in clinic.staff:
+            print(staff_member.role(), "fee:", staff_member.fee())
+
+        # Book and confirm an appointment for hour 15.
+        clinic.book_appointment(4, first_patient, doctor, 15)
+        clinic.join_waiting_list(waiting_patient, doctor)
+        clinic.confirm_appointment(4)
+
+        # Deliberately try to double-book Ava with the same doctor and hour.
+        try:
+            clinic.book_appointment(99, first_patient, doctor, 15)
+        except ValueError as error:
+            print("Expected booking failure:", error)
+
+        # Cancel the appointment. Ben should receive the freed slot as PENDING.
+        clinic.cancel_appointment(4)
+        print("Waiting patient appointment:", clinic.appointments[-1].status.value)

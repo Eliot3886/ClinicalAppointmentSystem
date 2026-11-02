@@ -1,0 +1,14 @@
+register patient: SUCCESS
+register patient: SUCCESS
+book #4: SUCCESS
+confirm #4: SUCCESS
+FAILED book #99: Patient or staff member already has an appointment then.
+book #5: SUCCESS
+cancel #4: SUCCESS
+register patient: SUCCESS
+register patient: SUCCESS
+book #4: SUCCESS
+confirm #4: SUCCESS
+FAILED book #99: Patient or staff member already has an appointment then.
+book #5: SUCCESS
+cancel #4: SUCCESS
